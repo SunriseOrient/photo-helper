@@ -1,5 +1,5 @@
 appId: com.electron.app
-productName: photo-helper
+productName: 照片整理工具
 directories:
   buildResources: build
 files:
@@ -13,10 +13,12 @@ asarUnpack:
 win:
   executableName: photo-helper
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  artifactName: ${productName}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  oneClick: false
+  allowToChangeInstallationDirectory: true
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

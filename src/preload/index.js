@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import packageInfo from '../../package.json'
 
 const api = {
   start: (option) => ipcRenderer.invoke('start', option),
@@ -8,7 +9,13 @@ const api = {
     ipcRenderer.on('sendLog', (event, args) => {
       cb && cb(args)
     })
-  }
+  },
+  listenProgress(cb) {
+    ipcRenderer.on('updateProgress', (event, args) => {
+      cb && cb(args)
+    })
+  },
+  packageInfo: packageInfo
 }
 
 if (process.contextIsolated) {

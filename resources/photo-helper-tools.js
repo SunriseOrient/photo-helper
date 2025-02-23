@@ -2,7 +2,7 @@
  * @Author: mikey.zhaopeng
  * @Date: 2023-09-29 00:27:37
  * @Last Modified by: Sun Rising
- * @Last Modified time: 2023-10-25 10:02:04
+ * @Last Modified time: 2025-02-22 20:17:26
  * 相片视频管理工具
  */
 const fs = require('fs-extra')
@@ -10,9 +10,9 @@ const pify = require('pify')
 const path = require('path')
 const Exif = require('exif')
 
-class PhotoHelper {
-  win
+const { parentPort } = require('worker_threads')
 
+class PhotoHelper {
   // 源文件夹
   sourceDir = ''
   // 目标文件夹
@@ -21,7 +21,7 @@ class PhotoHelper {
   otherDir = path.join(this.targetDir, 'TEMP')
   // 处理的文件类型
   imageType = ['.jpg', '.jpeg', '.png', '.arw']
-  videoType = ['.mp4', '.3gp']
+  videoType = ['.mp4', '.3gp', '.mov']
   // 处理方式
   handleType = 'copy'
   // 目录结构 ["YYYY", "MM"] | ['YYYY-MM']
@@ -33,17 +33,17 @@ class PhotoHelper {
   fileList = []
   // 其它文件集合
   otherFileList = []
-  // 已经移动的文件集合 适用于handleType=move , 先copy再删除
-  movedFileList = []
+  // 已经操作的文件集合
+  operatedFileList = []
 
-  async run(win, option) {
+  async run(option) {
     try {
       this.checkOption(option)
 
       this.fileList = []
       this.otherFileList = []
+      this.operatedFileList = []
 
-      this.win = win
       this.sourceDir = option.sourceDir
       this.targetDir = option.targetDir
       this.otherDir = path.join(this.targetDir, 'TEMP')
@@ -54,18 +54,22 @@ class PhotoHelper {
       this.videoType = option.videoType || ['.mp4', '.3gp']
 
       await this.readSourceDir(option.sourceDir)
+      this.sendWebContents('updateProgress', {
+        total: this.fileList.length + this.otherFileList.length,
+        handle: 0
+      })
       await this.getShootTime()
       await this.operateFiles()
       await this.operateOtherFiles()
       if (this.handleType == 'move') {
         await this.operateMovedFileList()
       }
-      win.webContents.send('sendLog', {
+      this.sendWebContents('sendLog', {
         state: 200,
         message: '处理完成'
       })
     } catch (error) {
-      win.webContents.send('sendLog', {
+      this.sendWebContents('sendLog', {
         state: 500,
         message: error.toString()
       })
@@ -76,6 +80,13 @@ class PhotoHelper {
   checkOption(option) {
     if (!option.sourceDir) throw new Error('sourceDir is required')
     if (!option.targetDir) throw new Error('targetDir is required')
+  }
+
+  sendWebContents(key, data) {
+    parentPort.postMessage({
+      api: key,
+      data
+    })
   }
 
   // 创建函数遍历源文件夹下的所有文件支持子文件夹，把文件名插入到files中
@@ -112,7 +123,7 @@ class PhotoHelper {
           })
         }
 
-        this.win.webContents.send('sendLog', {
+        this.sendWebContents('sendLog', {
           state: 201,
           message: `发现文件 ${filePath}`
         })
@@ -195,7 +206,8 @@ class PhotoHelper {
       if (this.handleType == 'copy') {
         console.log(`copy ${file.path} --> ${targetPath}`)
         fs.copyFileSync(file.path, targetPath)
-        this.win.webContents.send('sendLog', {
+        this.operatedFileList.push(file)
+        this.sendWebContents('sendLog', {
           state: 201,
           message: `复制 ${file.path} --> ${targetPath}`
         })
@@ -204,12 +216,16 @@ class PhotoHelper {
       if (this.handleType == 'move') {
         console.log(`move ${file.path} --> ${targetPath}`)
         fs.copyFileSync(file.path, targetPath)
-        this.movedFileList.push(file)
-        this.win.webContents.send('sendLog', {
+        this.operatedFileList.push(file)
+        this.sendWebContents('sendLog', {
           state: 201,
           message: `移动 ${file.path} --> ${targetPath}`
         })
       }
+      this.sendWebContents('updateProgress', {
+        total: this.fileList.length + this.otherFileList.length,
+        handle: this.operatedFileList.length
+      })
     }
   }
 
@@ -217,16 +233,17 @@ class PhotoHelper {
     for (let index = 0; index < this.otherFileList.length; index++) {
       const file = this.otherFileList[index]
 
-      if (!fs.existsSync(otherDir)) {
-        fs.mkdirSync(otherDir, { recursive: true })
+      if (!fs.existsSync(this.otherDir)) {
+        fs.mkdirSync(this.otherDir, { recursive: true })
       }
 
-      const targetPath = path.join(otherDir, file.name)
+      const targetPath = path.join(this.otherDir, file.name)
 
       if (this.handleType == 'copy') {
         console.log(`copy ${file.path} --> ${targetPath}`)
         fs.copyFileSync(file.path, targetPath)
-        this.win.webContents.send('sendLog', {
+        this.operatedFileList.push(file)
+        this.sendWebContents('sendLog', {
           state: 201,
           message: `复制 ${file.path} --> ${targetPath}`
         })
@@ -235,20 +252,25 @@ class PhotoHelper {
       if (this.handleType == 'move') {
         console.log(`move ${file.path} --> ${targetPath}`)
         fs.copyFileSync(file.path, targetPath)
-        this.movedFileList.push(file)
-        this.win.webContents.send('sendLog', {
+        this.operatedFileList.push(file)
+        this.sendWebContents('sendLog', {
           state: 201,
           message: `移动 ${file.path} --> ${targetPath}`
         })
       }
+
+      this.sendWebContents('updateProgress', {
+        total: this.fileList.length + this.otherFileList.length,
+        handle: this.operatedFileList.length
+      })
     }
   }
 
   operateMovedFileList() {
-    for (let index = 0; index < this.movedFileList.length; index++) {
-      const file = this.movedFileList[index]
+    for (let index = 0; index < this.operatedFileList.length; index++) {
+      const file = this.operatedFileList[index]
       fs.removeSync(file.path)
-      this.win.webContents.send('sendLog', {
+      this.sendWebContents('sendLog', {
         state: 201,
         message: `清理文件 ${file.path}`
       })
@@ -271,4 +293,16 @@ class PhotoHelper {
   }
 }
 
-export const photoHelper = new PhotoHelper()
+const photoHelper = new PhotoHelper()
+
+parentPort.on('message', (message) => {
+  console.log('work接收到信息：', message)
+  switch (message.api) {
+    case 'start':
+      photoHelper.run(message.data).finally(() => {
+        parentPort.postMessage({ api: 'start:end' })
+      })
+      break
+    default:
+  }
+})

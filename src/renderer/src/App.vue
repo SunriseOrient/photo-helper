@@ -125,7 +125,7 @@ export default {
       targetDir: '',
       imageType: ['.jpg', '.jpeg', '.png', '.arw'],
       videoType: ['.mp4', '.3gp', ".mov"],
-      handleType: 'move',
+      handleType: 'copy',
       dirStruct: 'YYYY-MM',
       isOverwrite: true,
       imageTypes: ['.jpg', '.jpeg', '.png', '.arw'],

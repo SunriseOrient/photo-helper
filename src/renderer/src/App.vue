@@ -210,6 +210,22 @@ export default {
       }
     },
     run() {
+      if (!this.preRunCheck()) return
+      this.doRun()
+    },
+    doRun() {
+      if (!this.sourceDir || !this.targetDir) {
+        ElMessageBox.alert(
+          '源文件夹和释放文件夹不能为空，请选择后再运行。',
+          '提示',
+          {
+            confirmButtonText: '我知道了',
+            autofocus: false,
+            modalClass: "modal-color"
+          }
+        )
+        return
+      }
       this.logs.length = 0
       this.isRuning = true
       window.api
@@ -231,6 +247,28 @@ export default {
       }
       if (this.targetDir) {
         localStorage.setItem('targetDir', this.targetDir)
+      }
+    },
+    // 运行前置检查
+    preRunCheck() {
+      if (this.handleType == "move") {
+        ElMessageBox.confirm(
+          '<span style="color:red;">此操作可能导致原始数据丢失。</span>在继续之前，请确保您已对目标数据完成备份。数据一旦丢失可能无法恢复，请确认备份完成后进行操作。',
+          '操作模式确认：数据移动',
+          {
+            confirmButtonText: '我已知晓',
+            cancelButtonText: '取消操作',
+            autofocus: false,
+            dangerouslyUseHTMLString: true,
+            modalClass: "modal-color",
+            closeOnClickModal: false,
+            closeOnPressEscape: false,
+            showClose: false
+          }
+        ).then(() => this.doRun())
+        return false
+      } else {
+        return true
       }
     },
     selectDir(type) {

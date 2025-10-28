@@ -1,8 +1,11 @@
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
-import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron'
+import { BrowserWindow, app, shell } from 'electron'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
 import { initPhotoHelperToolsConnector } from './work/photo-helper-tools-connector'
+import { enableLog } from './utils/enable-log'
+
+enableLog()
 
 function createWindow() {
   const mainWindow = new BrowserWindow({

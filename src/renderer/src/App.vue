@@ -167,6 +167,13 @@ export default {
       if (this.logs.length > 500) {
         this.logs.splice(0, this.logs.length - 500)
       }
+      if (message.state === 500) {
+        ElMessageBox.alert(message.message, '执行异常', {
+          confirmButtonText: '我知道了',
+          autofocus: false,
+          modalClass: "modal-color"
+        })
+      }
       console.log(message)
       setTimeout(() => {
         if (!this.$refs.scrollbar) return
@@ -220,6 +227,18 @@ export default {
       if (!this.sourceDir || !this.targetDir) {
         ElMessageBox.alert(
           '源文件夹和释放文件夹不能为空，请选择后再运行。',
+          '提示',
+          {
+            confirmButtonText: '我知道了',
+            autofocus: false,
+            modalClass: "modal-color"
+          }
+        )
+        return
+      }
+      if (this.sourceDir === this.targetDir) {
+        ElMessageBox.alert(
+          '源文件夹和目标文件夹不能相同，请重新选择。',
           '提示',
           {
             confirmButtonText: '我知道了',

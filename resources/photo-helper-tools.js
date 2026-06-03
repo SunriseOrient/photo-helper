@@ -47,11 +47,11 @@ class PhotoHelper {
       this.sourceDir = option.sourceDir
       this.targetDir = option.targetDir
       this.otherDir = path.join(this.targetDir, 'TEMP')
-      this.handleType = option.handleType || 'move'
+      this.handleType = option.handleType || 'copy'
       this.dirStruct = option.dirStruct || ['YYYY-MM']
-      this.isOverwrite = option.isOverwrite || true
+      this.isOverwrite = option.isOverwrite ?? true
       this.imageType = option.imageType || ['.jpg', '.jpeg', '.png', '.arw']
-      this.videoType = option.videoType || ['.mp4', '.3gp']
+      this.videoType = option.videoType || ['.mp4', '.3gp', '.mov']
 
       await this.readSourceDir(option.sourceDir)
       this.sendWebContents('updateProgress', {
@@ -61,9 +61,6 @@ class PhotoHelper {
       await this.getShootTime()
       await this.operateFiles()
       await this.operateOtherFiles()
-      if (this.handleType == 'move') {
-        await this.operateMovedFileList()
-      }
       this.sendWebContents('sendLog', {
         state: 200,
         message: '处理完成'
@@ -80,6 +77,8 @@ class PhotoHelper {
   checkOption(option) {
     if (!option.sourceDir) throw new Error('sourceDir is required')
     if (!option.targetDir) throw new Error('targetDir is required')
+    if (path.resolve(option.sourceDir) === path.resolve(option.targetDir))
+      throw new Error('源文件夹和目标文件夹不能相同')
   }
 
   sendWebContents(key, data) {
@@ -89,20 +88,20 @@ class PhotoHelper {
     })
   }
 
-  // 创建函数遍历源文件夹下的所有文件支持子文件夹，把文件名插入到files中
   async readSourceDir(dir) {
-    const files = await pify(fs.readdir)(dir)
+    const files = await fs.readdir(dir)
     for (let index = 0; index < files.length; index++) {
       const file = files[index]
-      const filePath = dir + '/' + file
-      if (fs.statSync(filePath).isDirectory()) {
+      const filePath = path.join(dir, file)
+      const stat = await fs.stat(filePath)
+      if (stat.isDirectory()) {
         await this.readSourceDir(filePath)
       } else {
         const ext = path.parse(file).ext
         if (this.imageType.concat(this.videoType).includes(ext.toLowerCase())) {
           let rename = file
           if (!this.isOverwrite) {
-            rename = getRename(file, this.fileList)
+            rename = this.getRename(file, this.fileList)
           }
           this.fileList.push({
             name: file,
@@ -113,7 +112,7 @@ class PhotoHelper {
         } else {
           let rename = file
           if (!this.isOverwrite) {
-            rename = getRename(file, this.otherFileList)
+            rename = this.getRename(file, this.otherFileList)
           }
           this.otherFileList.push({
             name: file,
@@ -130,7 +129,7 @@ class PhotoHelper {
       }
     }
   }
-  // 获取拍摄时间
+
   async getShootTime() {
     let noTimeFile = new Map()
     for (let index = 0; index < this.fileList.length; index++) {
@@ -149,7 +148,7 @@ class PhotoHelper {
         } catch (error) {}
 
         if (!file.time) {
-          const info = fs.statSync(file.path)
+          const info = await fs.stat(file.path)
           const ctime = info.ctime ?? info.mtime
           if (ctime) {
             file.time = new Date(ctime)
@@ -158,7 +157,7 @@ class PhotoHelper {
       }
 
       if (this.videoType.includes(file.ext.toLowerCase())) {
-        const info = fs.statSync(file.path)
+        const info = await fs.stat(file.path)
         const ctime = info.ctime ?? info.mtime
         if (ctime) {
           file.time = new Date(ctime)
@@ -197,31 +196,26 @@ class PhotoHelper {
         }
       })
 
-      if (!fs.existsSync(targetPath)) {
-        fs.mkdirSync(targetPath, { recursive: true })
-      }
-
+      await fs.ensureDir(targetPath)
       targetPath = path.join(targetPath, file.rename)
 
-      if (this.handleType == 'copy') {
+      if (this.handleType == 'move') {
+        console.log(`move ${file.path} --> ${targetPath}`)
+        await fs.copy(file.path, targetPath)
+        await fs.remove(file.path)
+        this.sendWebContents('sendLog', {
+          state: 201,
+          message: `移动 ${file.path} --> ${targetPath}`
+        })
+      } else {
         console.log(`copy ${file.path} --> ${targetPath}`)
-        fs.copyFileSync(file.path, targetPath)
-        this.operatedFileList.push(file)
+        await fs.copy(file.path, targetPath)
         this.sendWebContents('sendLog', {
           state: 201,
           message: `复制 ${file.path} --> ${targetPath}`
         })
       }
-
-      if (this.handleType == 'move') {
-        console.log(`move ${file.path} --> ${targetPath}`)
-        fs.copyFileSync(file.path, targetPath)
-        this.operatedFileList.push(file)
-        this.sendWebContents('sendLog', {
-          state: 201,
-          message: `移动 ${file.path} --> ${targetPath}`
-        })
-      }
+      this.operatedFileList.push(file)
       this.sendWebContents('updateProgress', {
         total: this.fileList.length + this.otherFileList.length,
         handle: this.operatedFileList.length
@@ -233,31 +227,27 @@ class PhotoHelper {
     for (let index = 0; index < this.otherFileList.length; index++) {
       const file = this.otherFileList[index]
 
-      if (!fs.existsSync(this.otherDir)) {
-        fs.mkdirSync(this.otherDir, { recursive: true })
-      }
+      await fs.ensureDir(this.otherDir)
 
-      const targetPath = path.join(this.otherDir, file.name)
+      const targetPath = path.join(this.otherDir, file.rename)
 
-      if (this.handleType == 'copy') {
+      if (this.handleType == 'move') {
+        console.log(`move ${file.path} --> ${targetPath}`)
+        await fs.copy(file.path, targetPath)
+        await fs.remove(file.path)
+        this.sendWebContents('sendLog', {
+          state: 201,
+          message: `移动 ${file.path} --> ${targetPath}`
+        })
+      } else {
         console.log(`copy ${file.path} --> ${targetPath}`)
-        fs.copyFileSync(file.path, targetPath)
-        this.operatedFileList.push(file)
+        await fs.copy(file.path, targetPath)
         this.sendWebContents('sendLog', {
           state: 201,
           message: `复制 ${file.path} --> ${targetPath}`
         })
       }
-
-      if (this.handleType == 'move') {
-        console.log(`move ${file.path} --> ${targetPath}`)
-        fs.copyFileSync(file.path, targetPath)
-        this.operatedFileList.push(file)
-        this.sendWebContents('sendLog', {
-          state: 201,
-          message: `移动 ${file.path} --> ${targetPath}`
-        })
-      }
+      this.operatedFileList.push(file)
 
       this.sendWebContents('updateProgress', {
         total: this.fileList.length + this.otherFileList.length,
@@ -266,30 +256,21 @@ class PhotoHelper {
     }
   }
 
-  operateMovedFileList() {
-    for (let index = 0; index < this.operatedFileList.length; index++) {
-      const file = this.operatedFileList[index]
-      fs.removeSync(file.path)
-      this.sendWebContents('sendLog', {
-        state: 201,
-        message: `清理文件 ${file.path}`
-      })
-    }
-  }
-
   getRename(fileName, files) {
-    const file = files.reverse().find((item) => item.rename.includes(path.parse(fileName).name))
-    if (!file) return fileName
-
-    const regex = /\((\d+)\)/ // 匹配括号内的数字
-    const match = regex.exec(file.rename)
-    if (match && match[1]) {
-      const number = match[1]
-      return file.rename.replace(regex, `(${parseInt(number) + 1})`)
-    } else {
-      const fileInfo = path.parse(file.rename)
-      return `${fileInfo.name}(1)${fileInfo.ext}`
+    const baseName = path.parse(fileName).name
+    const ext = path.parse(fileName).ext
+    let maxNum = 0
+    for (const item of files) {
+      const itemName = path.parse(item.rename).name
+      if (itemName === baseName) {
+        maxNum = Math.max(maxNum, 1)
+      }
+      const match = itemName.match(new RegExp(`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\((\\d+)\\)$`))
+      if (match) {
+        maxNum = Math.max(maxNum, parseInt(match[1]) + 1)
+      }
     }
+    return maxNum > 0 ? `${baseName}(${maxNum})${ext}` : fileName
   }
 }
 

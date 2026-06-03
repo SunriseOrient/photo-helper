@@ -164,6 +164,9 @@ export default {
   mounted() {
     window.api.listenLog((message) => {
       this.logs.push(message)
+      if (this.logs.length > 500) {
+        this.logs.splice(0, this.logs.length - 500)
+      }
       console.log(message)
       setTimeout(() => {
         if (!this.$refs.scrollbar) return
